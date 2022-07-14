@@ -7,23 +7,23 @@ import (
 	"time"
 )
 
-type UserDao interface {
+type UserQuerier interface {
 	GetUserName(context.Context,int) (string,error)
 }
 
-type Cache interface {
+type UserCacheQuerier interface {
 	GetUserName(context.Context,int) (string,bool,error)
 }
 
-type DB interface {
+type UserDBQuerier interface {
 	GetUserName(context.Context,int) (string,bool,error)
 }
 
-// UserEntity implement the UserDao interface.
+// UserEntity implement the UserQuerier interface.
 type UserEntity struct {
 	// consider timeout, no hit in cache layer
-	QueryCache Cache
-	QueryDb DB
+	QueryCache UserCacheQuerier
+	QueryDb    UserDBQuerier
 }
 
 func (ue *UserEntity) GetUserName(ctx context.Context,id int) (string,error){
@@ -44,7 +44,7 @@ func (ue *UserEntity) GetUserName(ctx context.Context,id int) (string,error){
 	return "",errors.New("no record is found")
 }
 
-type queryCache struct {}
+type userCacheQuery struct {}
 
 func WrapId(source string,id int)string{
 	return fmt.Sprintf("get a name from %s: %d",source,id)
@@ -52,7 +52,7 @@ func WrapId(source string,id int)string{
 
 // GetUserName mock the data cache such as redis,only id between [1,5] could hit.
 // [6,7] will sleep 1 second and hit,[8,10] will sleep 1s and not hit
-func (c *queryCache) GetUserName(ctx context.Context,id int) (string,bool,error){
+func (c *userCacheQuery) GetUserName(ctx context.Context,id int) (string,bool,error){
 	_,cancel:=context.WithCancel(ctx)
 	hitCh:=make(chan bool)
 	errCh:=make(chan error)
@@ -95,13 +95,13 @@ func (c *queryCache) GetUserName(ctx context.Context,id int) (string,bool,error)
 	return "", false, nil
 }
 
-type queryDB struct {}
+type userDbQuery struct {}
 
 var ErrNotFound=errors.New("db record not is found")
 // GetUserName mock the data db such as redis,only id between [1,5] exist.
 // [6,8] will sleep 1 second and return value. [9,10] will sleep 1s and return a ErrNotFound error
 // The other will not be queried.
-func (c *queryDB) GetUserName(ctx context.Context,id int) (string,bool,error){
+func (c *userDbQuery) GetUserName(ctx context.Context,id int) (string,bool,error){
 	_,cancel:=context.WithCancel(ctx)
 	hitCh:=make(chan bool)
 	errCh:=make(chan error)
@@ -145,12 +145,12 @@ func (c *queryDB) GetUserName(ctx context.Context,id int) (string,bool,error){
 	return "", false, nil
 }
 
-var defaultQueryCache Cache=&queryCache{}
-var defaultQueryDb DB=&queryDB{}
+var defaultQueryCache UserCacheQuerier =&userCacheQuery{}
+var defaultQueryDb UserDBQuerier =&userDbQuery{}
 
 type Option func(entity *UserEntity)
 
-func NewUserDao(opts... Option) UserDao{
+func NewUserDao(opts... Option) UserQuerier {
 	entity:= UserEntity{
 		QueryCache: defaultQueryCache,
 		QueryDb: defaultQueryDb,
